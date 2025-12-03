@@ -1,2 +1,2 @@
-# TFGLaia
-scripts usats per al TFG
+# TFG-BioimpressioVascular
+GCode i codi python de processament de dades
