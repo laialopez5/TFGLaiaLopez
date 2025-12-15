@@ -1,0 +1,45 @@
+import pandas as pd
+import matplotlib.pyplot as plt
+
+df = pd.DataFrame({
+    'Dissolvent': ['Aigua Milli-Q', 'PBS', 'Medi F-12K'],
+    'Viabilitat': [55.19630962, 79.34766081, 81.08092053]
+})
+
+plt.rcParams.update({
+    "font.size": 14,
+    "axes.titlesize": 18,
+    "axes.labelsize": 16,
+    "xtick.labelsize": 14,
+    "ytick.labelsize": 14,
+    "lines.linewidth": 2
+})
+
+fig, ax = plt.subplots(figsize=(8,6))
+
+colores = ['lightgray','gray','dimgray']
+
+bars = ax.bar(df['Dissolvent'], df['Viabilitat'], color=colores, edgecolor='black', linewidth=1.5)
+
+for bar in bars:
+    height = bar.get_height()
+    ax.text(bar.get_x() + bar.get_width()/2, height + 2, f'{height:.1f}%', ha='center', va='bottom', color='black', fontsize=14, fontweight='bold')
+
+comparacions = [(0,1),(0,2)]  # Aigua vs PBS y Aigua vs Medi
+h_spacing = 5
+y_max = max(df['Viabilitat'])
+for i, (x1, x2) in enumerate(comparacions):
+    y = y_max + h_spacing*(i+1)
+    h = 1.5  
+    ax.plot([x1, x1, x2, x2], [y, y+h, y+h, y], lw=1.5, c='k')
+    ax.text((x1+x2)/2, y+h+1, "*", ha='center', va='bottom', color='k', fontsize=16, fontweight='bold')
+
+
+ax.set_ylabel('Viabilitat (%)')
+ax.set_title('Viabilitat segons Dissolvent')
+ax.set_ylim(0, 100)
+ax.grid(axis='y', linestyle='--', alpha=0.5)
+
+plt.tight_layout()
+plt.savefig("viabilitat_solvents_gris.svg", format='svg')
+plt.show()
