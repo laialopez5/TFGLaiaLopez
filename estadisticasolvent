@@ -1,10 +1,29 @@
 import pandas as pd
 import matplotlib.pyplot as plt
+from scipy import stats
+import statsmodels.stats.multicomp as mc
+import numpy as np
 
-df = pd.DataFrame({
-    'Dissolvent': ['Aigua Milli-Q', 'PBS', 'Medi F-12K'],
-    'Viabilitat': [55.19630962, 79.34766081, 81.08092053]
-})
+data = {
+    'Dissolvent': ['Aigua Milli-Q']*4 + ['PBS']*4 + ['Medi F-12K']*4,
+    'Viabilitat': [
+        59.2, 46.93, 44.02, 70.62,   # Aigua
+        72.51, 87.38, 68.22, 89.27,   # PBS
+        76.16, 85.6, 59.599, 102.95   # Medi
+    ]
+}
+
+df = pd.DataFrame(data)
+
+resum = df.groupby('Dissolvent')['Viabilitat'].agg(['mean','std']).reset_index()
+solvents = resum['Dissolvent'].tolist()
+
+groups = [df[df['Dissolvent']==s]['Viabilitat'] for s in solvents]
+f_stat, p_val = stats.f_oneway(*groups)
+print(f"ANOVA p-value: {p_val:.5f}")
+
+tukey = mc.pairwise_tukeyhsd(df['Viabilitat'], df['Dissolvent'])
+print(tukey)
 
 plt.rcParams.update({
     "font.size": 14,
@@ -15,31 +34,48 @@ plt.rcParams.update({
     "lines.linewidth": 2
 })
 
-fig, ax = plt.subplots(figsize=(8,6))
+fig, ax = plt.subplots(figsize=(9,6))
 
 colores = ['lightgray','gray','dimgray']
 
-bars = ax.bar(df['Dissolvent'], df['Viabilitat'], color=colores, edgecolor='black', linewidth=1.5)
+bars = ax.bar(
+    resum['Dissolvent'], 
+    resum['mean'], 
+    yerr=resum['std'], 
+    capsize=6, 
+    color=colores, 
+    edgecolor='black',
+    linewidth=1.5
+)
 
-for bar in bars:
-    height = bar.get_height()
-    ax.text(bar.get_x() + bar.get_width()/2, height + 2, f'{height:.1f}%', ha='center', va='bottom', color='black', fontsize=14, fontweight='bold')
+for bar, mean in zip(bars, resum['mean']):
+    ax.text(bar.get_x() + bar.get_width()/2, mean + 2, f'{mean:.1f}%', 
+            ha='center', va='bottom', color='black', fontsize=14, fontweight='bold')
 
-comparacions = [(0,1),(0,2)]  # Aigua vs PBS y Aigua vs Medi
-h_spacing = 5
-y_max = max(df['Viabilitat'])
+primer_grup = solvents[0]
+h_spacing = 7  
+y_max = max(resum['mean'] + resum['std'])
+
+comparacions = []
+
+for row in tukey.summary().data[1:]:
+    g1, g2, meandiff, p_adj, lower, upper, reject = row
+    if reject and (g1==primer_grup or g2==primer_grup):
+        x1 = solvents.index(g1)
+        x2 = solvents.index(g2)
+        comparacions.append((x1, x2))
+
 for i, (x1, x2) in enumerate(comparacions):
     y = y_max + h_spacing*(i+1)
-    h = 1.5  
+    h = 1.5
     ax.plot([x1, x1, x2, x2], [y, y+h, y+h, y], lw=1.5, c='k')
     ax.text((x1+x2)/2, y+h+1, "*", ha='center', va='bottom', color='k', fontsize=16, fontweight='bold')
 
-
 ax.set_ylabel('Viabilitat (%)')
 ax.set_title('Viabilitat segons Dissolvent')
-ax.set_ylim(0, 100)
+ax.set_ylim(0, 120)  
 ax.grid(axis='y', linestyle='--', alpha=0.5)
 
 plt.tight_layout()
-plt.savefig("viabilitat_solvents_gris.svg", format='svg')
+plt.savefig("viabilitat_solvents_completa.svg", format='svg')
 plt.show()
