@@ -34,7 +34,7 @@ plt.rcParams.update({
 
 fig, ax = plt.subplots(figsize=(7,6))
 
-colores = ['gray','lightgray']
+colores = ['white','lightgray']
 
 bars = ax.bar(
     resum['Condicio'], 
@@ -45,7 +45,6 @@ bars = ax.bar(
     edgecolor='black',
     linewidth=1.5
 )
-
 
 if significatiu:
     x1, x2 = 0, 1
