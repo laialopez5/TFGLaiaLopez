@@ -48,13 +48,7 @@ bars = ax.bar(
     linewidth=1.5
 )
 
-for bar, mean in zip(bars, resum['mean']):
-    ax.text(bar.get_x() + bar.get_width()/2, mean + 2, f'{mean:.1f}%', 
-            ha='center', va='bottom', color='black', fontsize=14, fontweight='bold')
 
-primer_grup = solvents[0]
-h_spacing = 7  
-y_max = max(resum['mean'] + resum['std'])
 
 comparacions = []
 
