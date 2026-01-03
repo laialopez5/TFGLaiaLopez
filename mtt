@@ -1,0 +1,112 @@
+import matplotlib.pyplot as plt
+import numpy as np
+from scipy import stats
+
+# --- DADES ---
+raw = {
+    '2D': {
+        '30s': [1.2753, 1.7601, 0.6146],
+        '90s': [1.279, 1.6036, 0.5176]
+    },
+    '2D+LAP': {
+        '30s': [1.7081, 0.2516, np.nan],
+        '90s': [1.6111, 0.2266, np.nan]
+    },
+    'GelMA+LAP': {
+        '30s': [0.2127, 0.1244, 0.0417],
+        '90s': [0.2517, 0.2377, 0.0799]
+    },
+    'GelMA no LAP': {
+        '30s': [0.6301, 0.8734, 0.2631],
+        '90s': [0.6431, 0.8167, 0.3574]
+    }
+}
+
+# --- NORMALITZACIÓ respecte control 2D ---
+c2d_raw = np.array([1.306666667, 1.724666667, 0.603666667])
+ref = np.mean(c2d_raw)
+
+data = {
+    g: {t: (np.array(v)/ref)*100 for t, v in times.items()}
+    for g, times in raw.items()
+}
+
+# --- FUNCIONS ---
+def get_p(a, b):
+    a = np.array(a)[~np.isnan(a)]
+    b = np.array(b)[~np.isnan(b)]
+    return stats.ttest_ind(a, b).pvalue
+
+def sig_label(p):
+    if p < 0.001: return '***'
+    if p < 0.01: return '**'
+    if p < 0.05: return '*'
+    return None
+
+def annotate(ax, x1, x2, y, p):
+    s = sig_label(p)
+    if s is None:
+        return
+    h = 2
+    ax.plot([x1, x1, x2, x2], [y, y+h, y+h, y], c='black', lw=1.2)
+    ax.text((x1+x2)/2, y+h, s, ha='center', va='bottom')
+
+# --- GRÀFIC ---
+plt.rcParams.update({'font.size': 16})
+fig, ax = plt.subplots(figsize=(12, 7))
+
+groups = list(data.keys())
+x = np.arange(len(groups))
+w = 0.35
+
+color_30 = '#B0B0B0'  # gris clar
+color_90 = '#4D4D4D'  # gris fosc
+
+for i, g in enumerate(groups):
+    m30 = np.nanmean(data[g]['30s'])
+    m90 = np.nanmean(data[g]['90s'])
+    e30 = stats.sem(data[g]['30s'], nan_policy='omit')
+    e90 = stats.sem(data[g]['90s'], nan_policy='omit')
+
+    ax.bar(x[i]-w/2, m30, w, yerr=e30, capsize=5,
+           color=color_30, edgecolor='black',
+           label='30 s' if i == 0 else "")
+
+    ax.bar(x[i]+w/2, m90, w, yerr=e90, capsize=5,
+           color=color_90, edgecolor='black',
+           label='90 s' if i == 0 else "")
+
+    # Comparació 30s vs 90s
+    p_time = get_p(data[g]['30s'], data[g]['90s'])
+    annotate(ax, x[i]-w/2, x[i]+w/2,
+             max(m30+e30, m90+e90)+4, p_time)
+
+# --- SIGNIFICACIONS CLAU ---
+# LAP vs no LAP en 3D
+annotate(ax, x[2]-w/2, x[3]-w/2, 110,
+         get_p(data['GelMA+LAP']['30s'], data['GelMA no LAP']['30s']))
+annotate(ax, x[2]+w/2, x[3]+w/2, 120,
+         get_p(data['GelMA+LAP']['90s'], data['GelMA no LAP']['90s']))
+
+# 2D vs 3D (global)
+p_2d3d = get_p(
+    np.concatenate([data['2D']['30s'], data['2D']['90s']]),
+    np.concatenate([
+        data['GelMA+LAP']['30s'], data['GelMA+LAP']['90s'],
+        data['GelMA no LAP']['30s'], data['GelMA no LAP']['90s']
+    ])
+)
+annotate(ax, x[0]-w/2, x[2]+w/2, 130, p_2d3d)
+
+# --- ESTÈTICA ---
+ax.set_xticks(x)
+ax.set_xticklabels(groups)
+ax.set_ylabel('Viabilitat cel·lular (%)')
+ax.set_ylim(0, 170)
+ax.set_title('Activitat metabòlica cel·lular normalitzada al control 2D')
+ax.legend(loc='upper right', frameon=False)
+ax.grid(axis='y', linestyle='--', alpha=0.3)
+
+plt.tight_layout()
+plt.savefig('viabilitat_30s_90s.svg', format='svg')
+plt.show()
