@@ -24,42 +24,41 @@ groups = [df[df['Dissolvent']==s]['Viabilitat'] for s in solvents]
 f_stat, p_val = stats.f_oneway(*groups)
 print(f"ANOVA p-value: {p_val:.5f}")
 
-# 3. Configuració del gràfic
+# 3. Post-hoc Tukey HSD
+tukey = mc.pairwise_tukeyhsd(df['Viabilitat'], df['Dissolvent'], alpha=0.05)
+print("\nPost-hoc Tukey HSD:\n")
+print(tukey.summary())
+
+# 4. Configuració del gràfic
 plt.rcParams.update({
-    "font.size": 16,
-    "axes.titlesize": 16,
-    "axes.labelsize": 16,
-    "xtick.labelsize": 12,
-    "ytick.labelsize": 12
+    "font.size": 20,
+    "axes.titlesize": 20,
+    "axes.labelsize": 20,
+    "xtick.labelsize": 16,
+    "ytick.labelsize": 16
 })
 
 fig, ax = plt.subplots(figsize=(10, 7))
 
-# Colors per grup
-colors = ["#e7e7e7", "#848484", "#232323"] 
+colors = ["#e7e7e7", "#848484", "#232323"]
 
-# Creació de barres amb línies de desviació estàndard (std)
 bars = ax.bar(
     resum['Dissolvent'], 
     resum['mean'], 
     yerr=resum['std'], 
-    capsize=8,              
+    capsize=8,
     color=colors, 
     edgecolor='black',
     linewidth=1.2,
     error_kw={'ecolor': 'black', 'elinewidth': 2, 'capthick': 1.5} 
 )
 
-# Estètica i etiquetes
-ax.set_ylabel('Viabilitat (%)', fontweight='bold')
-ax.set_xlabel('Dissolvent de rehidratació', fontweight='bold')
-ax.set_title('Impacte de l\'osmolaritat en la viabilitat cel·lular', pad=20)
+ax.set_ylabel('Viabilitat (%)')
+ax.set_xlabel('Dissolvent de rehidratació')
+ax.set_title("Impacte de l'osmolaritat en la viabilitat cel·lular", pad=20)
 ax.set_ylim(0, 120)
 ax.grid(axis='y', linestyle='--', alpha=0.3)
 
-
 plt.tight_layout()
-
-# Guardat en format vectorial SVG
-plt.savefig("viabilitat_solvents_sense_significancia.svg", format='svg')
+plt.savefig("viabilitat_solvents_posthoc.svg", format='svg')
 plt.show()
