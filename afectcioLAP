@@ -4,7 +4,7 @@ from scipy import stats
 
 
 data = {
-    'Condicio': ['GelMa+cels']*4 + ['GelMa+LAP+cels']*4,
+    'Condicio': ['GelMa+cells']*4 + ['GelMa+LAP+cells']*4,
     'Viabilitat': [
         72.5159526, 87.3800738, 68.22296332, 89.27165354,   # GelMa+cels
         81.22151322, 63.17343173, 66.12672701, 102.2637795   # GelMa+LAP+cels
@@ -15,8 +15,8 @@ df = pd.DataFrame(data)
 
 resum = df.groupby('Condicio')['Viabilitat'].agg(['mean','std']).reset_index()
 
-cond1 = df[df['Condicio']=='GelMa+cels']['Viabilitat']
-cond2 = df[df['Condicio']=='GelMa+LAP+cels']['Viabilitat']
+cond1 = df[df['Condicio']=='GelMa+cells']['Viabilitat']
+cond2 = df[df['Condicio']=='GelMa+LAP+cells']['Viabilitat']
 
 t_stat, p_val = stats.ttest_ind(cond1, cond2)
 print(f"T-test p-value: {p_val:.5f}")
@@ -24,17 +24,17 @@ print(f"T-test p-value: {p_val:.5f}")
 significatiu = p_val < 0.05
 
 plt.rcParams.update({
-    "font.size": 14,
-    "axes.titlesize": 18,
-    "axes.labelsize": 16,
-    "xtick.labelsize": 14,
-    "ytick.labelsize": 14,
+    "font.size": 20,
+    "axes.titlesize": 20,
+    "axes.labelsize": 20,
+    "xtick.labelsize": 16,
+    "ytick.labelsize": 16,
     "lines.linewidth": 2
 })
 
 fig, ax = plt.subplots(figsize=(7,6))
 
-colores = ['white','lightgray']
+colores = ["#e7e7e7", "#848484" ]
 
 bars = ax.bar(
     resum['Condicio'], 
@@ -54,7 +54,7 @@ if significatiu:
     ax.text((x1+x2)/2, y_max+h+3, "*", ha='center', va='bottom', color='k', fontsize=16, fontweight='bold')
 
 ax.set_ylabel('Viabilitat (%)')
-ax.set_title('Viabilitat LAP: GelMa+cels vs GelMa+LAP+cels')
+ax.set_title('Viabilitat LAP: GelMa+cells vs GelMa+LAP+cells')
 ax.set_ylim(0, max(resum['mean'] + resum['std']) + 15)
 ax.grid(axis='y', linestyle='--', alpha=0.5)
 
