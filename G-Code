@@ -1,3 +1,8 @@
-G92 U0
-G1 U100 F60
-G1 U0
+G90         ; Canvia a posicionament absolut
+G92 U0      ; Reinicia la posició actual de l'eix U a 0
+G91         ; Canvia a posicionament incremental
+
+G1 U100 F100   ; Gira l'eix U 100 unitats a la velocitat F100
+G1 U10  F100   ; Gira l'eix U 10 unitats més a la mateixa velocitat
+G1 U3600 F100  ; Gira l'eix U 3600 unitats 
+G1 U0   F100   ; Torna l'eix U a la posició zero
