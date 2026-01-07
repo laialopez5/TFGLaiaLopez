@@ -5,8 +5,7 @@ from scipy.signal import find_peaks
 from scipy.interpolate import interp1d
 from scipy.integrate import trapezoid
 
-# --- CONFIGURACIÓ ---
-DEFORMACIO_LIMIT = 0.25  # Tallem totes les mostres al 25% (0.25 decimal)
+DEFORMACIO_LIMIT = 0.25  
 
 alturas = {
     '7_5_2mm_1': 6.0, '7_5_2mm_2': 6.0,
@@ -50,41 +49,30 @@ def analyze_sample(probeta):
         e_idx = np.where(d_col[p:] <= 0.05)[0]
         end = p + e_idx[0] if len(e_idx) > 0 else len(d_col)-1
         
-        # Segment complet original
         s_seg_raw = stress[start:end]
         e_seg_raw = strain[start:end]
         p_in_seg = p - start # Índex del pic dins del segment
         
-        # TRUNCAMENT: Trobar el punt 0.25 en càrrega i en descàrrega
         try:
-            # Índex on la càrrega arriba al 25%
             idx_load = np.where(e_seg_raw[:p_in_seg] >= DEFORMACIO_LIMIT)[0][0]
-            # Índex on la descàrrega torna a baixar del 25%
             idx_unload = np.where(e_seg_raw[p_in_seg:] <= DEFORMACIO_LIMIT)[0][0] + p_in_seg
             
-            # Nou segment normalitzat (0 -> 0.25 -> 0)
             s_seg = np.concatenate([s_seg_raw[:idx_load+1], s_seg_raw[idx_unload:]])
             e_seg = np.concatenate([e_seg_raw[:idx_load+1], e_seg_raw[idx_unload:]])
         except IndexError:
-            # Si una mostra no arriba al 25%, s'utilitza el segment complet (avís per al TFG)
             s_seg = s_seg_raw
             e_seg = e_seg_raw
 
         if len(s_seg) < 10: continue
-
-        # Mòdul de Young (pendent inicial del tram truncat)
         p_len = np.argmax(e_seg)
         idx_lin = range(int(p_len*0.1), int(p_len*0.3))
         E = np.polyfit(e_seg[idx_lin], s_seg[idx_lin], 1)[0] if len(idx_lin) > 2 else 0
             
-        # Histèresi (integrada sobre el cicle truncat)
         histeresis = trapezoid(s_seg, e_seg)
         
-        # Distància acumulada sobre el segment truncat
         d_diff = np.abs(np.diff(e_seg * h0, prepend=e_seg[0] * h0))
         d_cum = np.cumsum(d_diff)
 
-        # Interpolació forçada per a mitjanes
         x_new = np.linspace(0, 1, 500)
         s_interp = interp1d(np.linspace(0, 1, len(s_seg)), s_seg, kind='linear')(x_new)
         d_cum_interp = interp1d(np.linspace(0, 1, len(d_cum)), d_cum, kind='linear')(x_new)
@@ -92,7 +80,6 @@ def analyze_sample(probeta):
         cycles.append({'E': E, 'H': histeresis, 'd_cum': d_cum_interp, 'stress': s_interp})
     return cycles
 
-# Defineix colors específics per a cada prefix 
 meus_colors = {
     '7_5_1mm': "#b0bdaf",  
     '7_5_2mm': "#64836e",  
@@ -107,7 +94,6 @@ for cond, provetes in condicions.items():
     res_group = [analyze_sample(p) for p in provetes if len(analyze_sample(p)) == 3]
     if not res_group: continue
     
-    # Taula de dades truncades
     for c_idx in range(3):
         e_vals = [r[c_idx]['E'] for r in res_group]
         h_vals = [r[c_idx]['H'] for r in res_group]
@@ -117,7 +103,6 @@ for cond, provetes in condicions.items():
             'H_Mean (mJ/mm3)': np.mean(h_vals), 'H_SD': np.std(h_vals)
         })
 
-    # Gràfic normalitzat
     h_ref = np.mean([alturas.get(p, 10.0) for p in provetes])
     acc_x, acc_y, offset = [], [], 0
     for c_idx in range(3):
@@ -127,10 +112,9 @@ for cond, provetes in condicions.items():
         acc_x.extend(d_pct + offset)
         acc_y.extend(s_m)
         offset = acc_x[-1]
-    # Substitueix la teva línia de plt.plot per aquesta:
     plt.plot(acc_x, acc_y, label=cond, color=meus_colors.get(cond, 'gray'))
 
-print("\n--- RESULTATS TFG (Normalitzats al 25% de deformació) ---")
+print("\n--- RESULTATS ---")
 print(pd.DataFrame(resum_stats).to_string(index=False))
 
 plt.xlabel("Deformació acumulada total (%)")
