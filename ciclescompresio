@@ -1,180 +1,142 @@
 import pandas as pd
 import numpy as np
 import matplotlib.pyplot as plt
+from scipy.signal import find_peaks
+from scipy.interpolate import interp1d
+from scipy.integrate import trapezoid
 
-grupos = {
-    '15%_1mm': {'probetas': ['15_1mm_1', '15_1mm_2', '15_1mm_3'], 'color': "#010101"},
-    '15%_2mm': {'probetas': ['15_2mm_1', '15_2mm_2', '15_2mm_3'], 'color': "#807E7E"},
-    '7.5%_1mm': {'probetas': ['7_5_1mm_1', '7_5_1mm_2', '7_5_1mm_3'], 'color': "#b8bcbe"},
-    '7.5%_2mm': {'probetas': ['7_5_2mm_1', '7_5_2mm_2'], 'color': "#515253"},
-}
+# --- CONFIGURACIÓ ---
+DEFORMACIO_LIMIT = 0.25  # Tallem totes les mostres al 25% (0.25 decimal)
 
 alturas = {
     '7_5_2mm_1': 6.0, '7_5_2mm_2': 6.0,
     '7_5_1mm_1': 6.0, '7_5_1mm_2': 5.0, '7_5_1mm_3': 4.5,
     '15_2mm_1': 10.0, '15_2mm_2': 12.0, '15_2mm_3': 10.0,
-    '15_1mm_1': 7.0, '15_1mm_2': 9.0, '15_1mm_3': 10.0,
+    '15_1mm_1': 7.0, '15_1mm_2': 9.0, '15_1mm_3': 10.0
 }
 
-diametros = {
-    k: (15.0 if '15_' in k else 20.0) for k in alturas
+areas = {
+    '7_5': np.pi * (20 / 2)**2, 
+    '15': np.pi * (15 / 2)**2   
 }
 
-columnas_probetas = {
-    '15_1mm_1': [32, 33, 34, 35],
-    '15_1mm_2': [36, 37, 38, 39],
-    '15_1mm_3': [40, 41, 42, 43],
-    '15_2mm_1': [20, 21, 22, 23],
-    '15_2mm_2': [24, 25, 26, 27],
-    '15_2mm_3': [28, 29, 30, 31],
-    '7_5_2mm_1': [0, 1, 2, 3],
-    '7_5_2mm_2': [4, 5, 6, 7],
-    '7_5_1mm_1': [8, 9, 10, 11],
-    '7_5_1mm_2': [12, 13, 14, 15],
-    '7_5_1mm_3': [16, 17, 18, 19],
+df = pd.read_excel("dadesnetes.xls", header=[0,1])
+noms_columnes = [c for c in df.columns.levels[0] if "Unnamed" not in c]
+
+condicions = {}
+for nom in noms_columnes:
+    prefix = "_".join(nom.split("_")[:-1])
+    if prefix not in condicions:
+        condicions[prefix] = []
+    condicions[prefix].append(nom)
+
+def analyze_sample(probeta):
+    f_col = pd.to_numeric(df[(probeta, 'Fuerza (N)')], errors='coerce').fillna(0).values
+    d_col = pd.to_numeric(df[(probeta, 'Distancia (mm)')], errors='coerce').fillna(0).values
+    
+    prefix_area = '7_5' if probeta.startswith('7_5') else '15'
+    area = areas[prefix_area]
+    h0 = alturas.get(probeta, 10.0) 
+    
+    stress = f_col / area 
+    strain = d_col / h0
+    
+    peaks, _ = find_peaks(d_col, height=0.2, distance=50)
+    
+    cycles = []
+    for p in peaks[:3]:
+        s_idx = np.where(d_col[:p] <= 0.05)[0]
+        start = s_idx[-1] if len(s_idx) > 0 else 0
+        e_idx = np.where(d_col[p:] <= 0.05)[0]
+        end = p + e_idx[0] if len(e_idx) > 0 else len(d_col)-1
+        
+        # Segment complet original
+        s_seg_raw = stress[start:end]
+        e_seg_raw = strain[start:end]
+        p_in_seg = p - start # Índex del pic dins del segment
+        
+        # TRUNCAMENT: Trobar el punt 0.25 en càrrega i en descàrrega
+        try:
+            # Índex on la càrrega arriba al 25%
+            idx_load = np.where(e_seg_raw[:p_in_seg] >= DEFORMACIO_LIMIT)[0][0]
+            # Índex on la descàrrega torna a baixar del 25%
+            idx_unload = np.where(e_seg_raw[p_in_seg:] <= DEFORMACIO_LIMIT)[0][0] + p_in_seg
+            
+            # Nou segment normalitzat (0 -> 0.25 -> 0)
+            s_seg = np.concatenate([s_seg_raw[:idx_load+1], s_seg_raw[idx_unload:]])
+            e_seg = np.concatenate([e_seg_raw[:idx_load+1], e_seg_raw[idx_unload:]])
+        except IndexError:
+            # Si una mostra no arriba al 25%, s'utilitza el segment complet (avís per al TFG)
+            s_seg = s_seg_raw
+            e_seg = e_seg_raw
+
+        if len(s_seg) < 10: continue
+
+        # Mòdul de Young (pendent inicial del tram truncat)
+        p_len = np.argmax(e_seg)
+        idx_lin = range(int(p_len*0.1), int(p_len*0.3))
+        E = np.polyfit(e_seg[idx_lin], s_seg[idx_lin], 1)[0] if len(idx_lin) > 2 else 0
+            
+        # Histèresi (integrada sobre el cicle truncat)
+        histeresis = trapezoid(s_seg, e_seg)
+        
+        # Distància acumulada sobre el segment truncat
+        d_diff = np.abs(np.diff(e_seg * h0, prepend=e_seg[0] * h0))
+        d_cum = np.cumsum(d_diff)
+
+        # Interpolació forçada per a mitjanes
+        x_new = np.linspace(0, 1, 500)
+        s_interp = interp1d(np.linspace(0, 1, len(s_seg)), s_seg, kind='linear')(x_new)
+        d_cum_interp = interp1d(np.linspace(0, 1, len(d_cum)), d_cum, kind='linear')(x_new)
+        
+        cycles.append({'E': E, 'H': histeresis, 'd_cum': d_cum_interp, 'stress': s_interp})
+    return cycles
+
+# Defineix colors específics per a cada prefix 
+meus_colors = {
+    '7_5_1mm': "#b0bdaf",  
+    '7_5_2mm': "#64836e",  
+    '15_1mm': "#6A798C",   
+    '15_2mm': "#161414"    
 }
 
+plt.figure(figsize=(10,6))
+resum_stats = []
 
-def leer_probeta(df, nombre):
-    cols = columnas_probetas[nombre]
+for cond, provetes in condicions.items():
+    res_group = [analyze_sample(p) for p in provetes if len(analyze_sample(p)) == 3]
+    if not res_group: continue
+    
+    # Taula de dades truncades
+    for c_idx in range(3):
+        e_vals = [r[c_idx]['E'] for r in res_group]
+        h_vals = [r[c_idx]['H'] for r in res_group]
+        resum_stats.append({
+            'Grup': cond, 'Cicle': c_idx + 1,
+            'E_Mean (MPa)': np.mean(e_vals), 'E_SD': np.std(e_vals),
+            'H_Mean (mJ/mm3)': np.mean(h_vals), 'H_SD': np.std(h_vals)
+        })
 
-    f1 = pd.to_numeric(df.iloc[2:, cols[0]], errors='coerce').values
-    d1 = pd.to_numeric(df.iloc[2:, cols[1]], errors='coerce').values
-    f2 = pd.to_numeric(df.iloc[2:, cols[2]], errors='coerce').values
-    d2 = pd.to_numeric(df.iloc[2:, cols[3]], errors='coerce').values
+    # Gràfic normalitzat
+    h_ref = np.mean([alturas.get(p, 10.0) for p in provetes])
+    acc_x, acc_y, offset = [], [], 0
+    for c_idx in range(3):
+        d_m = np.mean([r[c_idx]['d_cum'] for r in res_group], axis=0)
+        s_m = np.mean([r[c_idx]['stress'] for r in res_group], axis=0)
+        d_pct = (d_m / h_ref) * 100
+        acc_x.extend(d_pct + offset)
+        acc_y.extend(s_m)
+        offset = acc_x[-1]
+    # Substitueix la teva línia de plt.plot per aquesta:
+    plt.plot(acc_x, acc_y, label=cond, color=meus_colors.get(cond, 'gray'))
 
-    mask = (~np.isnan(f1) &
-            ~np.isnan(d1) &
-            ~np.isnan(f2) &
-            ~np.isnan(d2))
+print("\n--- RESULTATS TFG (Normalitzats al 25% de deformació) ---")
+print(pd.DataFrame(resum_stats).to_string(index=False))
 
-    if mask.sum() < 100:
-        return None, None
-
-    fuerza = 0.5 * (f1[mask] + f2[mask])
-    dist = 0.5 * (d1[mask] + d2[mask])
-
-    return fuerza, dist
-
-
-
-def procesar(fuerza, dist, L0, diam):
-    idx = np.where(dist < -0.05)[0]
-    if len(idx) > 0:
-        fuerza, dist = fuerza[:idx[0]], dist[:idx[0]]
-
-    if len(fuerza) < 300:
-        return None
-
-    deform = dist / L0 * 100
-    area = np.pi * (diam / 2) ** 2
-    tension = fuerza / area * 1000
-    return deform, tension
-
-
-def dividir_ciclos(deform, tension):
-    n = len(deform) // 3
-    return [(deform[i*n:(i+1)*n], tension[i*n:(i+1)*n]) for i in range(3)]
-
-
-def ciclo_triangular_ideal(deform, tension, n_pts=200):
-    t_max = np.max(tension)
-
-    # Carga 0 → 30
-    x_carga = np.linspace(0, 30, n_pts//2)
-    y_carga = np.linspace(0, t_max, n_pts//2)
-
-    # Descarga 30 → 60 (ESPEJO PERFECTO)
-    x_desc = np.linspace(30, 60, n_pts//2)
-    y_desc = np.linspace(t_max, 0, n_pts//2)
-
-    deform_norm = np.concatenate([x_carga, x_desc])
-    tension_norm = np.concatenate([y_carga, y_desc])
-
-    return deform_norm, tension_norm
-
-def comprobar_maximos(fuerza, dist, nombre):
-    """Detecta el desplazamiento máximo y lo imprime para revisión."""
-    if fuerza is None or dist is None:
-        print(f"{nombre}: datos insuficientes")
-        return None
-    max_dist = np.max(dist)
-    max_fuerza = fuerza[np.argmax(dist)]
-    print(f"{nombre}: desplazamiento máximo = {max_dist:.2f} mm, fuerza asociada = {max_fuerza:.2f} N")
-    return max_dist, max_fuerza
-
-df = pd.read_excel("dadesnetes.xls", header=None)
-
-ciclos_grupo = {g: [] for g in grupos}
-
-for g, info in grupos.items():
-    for p in info['probetas']:
-        fuerza, dist = leer_probeta(df, p)
-        if fuerza is None:
-            continue
-
-        comprobar_maximos(fuerza, dist, p)
-
-        res = procesar(fuerza, dist, alturas[p], diametros[p])
-        if res is None:
-            continue
-
-        deform, tension = res
-        for d, t in dividir_ciclos(deform, tension):
-            ciclo = ciclo_triangular_ideal(d, t)
-            if ciclo:
-                ciclos_grupo[g].append(ciclo)
-
-
-malla = np.linspace(0, 60, 200)
-medias = {}
-
-for g, ciclos in ciclos_grupo.items():
-    if len(ciclos) < 2:
-        continue
-
-    interp = [np.interp(malla, d, t) for d, t in ciclos]
-    medias[g] = np.nanmean(interp, axis=0)
-
-
-y_max = max(np.max(y) for y in medias.values())
-
-plt.rcParams.update({
-    "font.size": 14,
-    "axes.titlesize": 16,
-    "axes.labelsize": 16,
-    "xtick.labelsize": 14,
-    "ytick.labelsize": 14,
-    "legend.fontsize": 14
-})
-
-
-plt.figure(figsize=(16, 6))
-
-for g, y in medias.items():
-    x = np.concatenate([malla + i*60 for i in range(3)])
-    y3 = np.tile(y, 3)
-
-    estilo_linea = '--' if '_2mm' in g else '-'
-
-    plt.plot(
-        x, y3,
-        label=f"{g}",
-        color=grupos[g]['color'],
-        linewidth=3,
-        linestyle=estilo_linea
-    )
-
-plt.xlabel("Deformació acumulada (%)")
-plt.ylabel("Tensió (kPa)")
-plt.title("Tensió.-Deformació")
-
-plt.xlim(0, 180)
-plt.ylim(0, y_max * 1.10)
-
-plt.grid(alpha=0.2)
+plt.xlabel("Deformació acumulada total (%)")
+plt.ylabel("Tensió (MPa)")
+plt.title(f"Anàlisi Cíclica: Resposta Normalitzada a $\epsilon$ = {DEFORMACIO_LIMIT*100}%")
 plt.legend()
+plt.grid(True, alpha=0.3)
 plt.tight_layout()
 plt.show()
-
-
